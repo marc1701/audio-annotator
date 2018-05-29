@@ -6,12 +6,12 @@
  *   data, updates components. When the user submits their work this class gets the workers
  *   annotations and other data and submits to the backend
  * Dependencies:
- *   AnnotationStages (src/annotation_stages.js), PlayBar & WorkflowBtns (src/components.js), 
+ *   AnnotationStages (src/annotation_stages.js), PlayBar & WorkflowBtns (src/components.js),
  *   HiddenImg (src/hidden_image.js), colormap (colormap/colormap.min.js) , Wavesurfer (lib/wavesurfer.min.js)
  * Globals variable from other files:
  *   colormap.min.js:
  *       magma // color scheme array that maps 0 - 255 to rgb values
- *    
+ *
  */
 function Annotator() {
     this.wavesurfer;
@@ -23,7 +23,7 @@ function Annotator() {
     this.hiddenImage;
     // only automatically open instructions modal when first loaded
     this.instructionsViewed = false;
-    // Boolean, true if currently sending http post request 
+    // Boolean, true if currently sending http post request
     this.sendingResponse = false;
 
     // Create color map for spectrogram
@@ -54,7 +54,7 @@ function Annotator() {
         container: '.labels'
     });
 
-    // Create hiddenImage, an image that is slowly revealed to a user as they annotate 
+    // Create hiddenImage, an image that is slowly revealed to a user as they annotate
     // (only for this.currentTask.feedback === 'hiddenImage')
     this.hiddenImage = new HiddenImg('.hidden_img', 100);
     this.hiddenImage.create();
@@ -63,7 +63,7 @@ function Annotator() {
     this.playBar = new PlayBar(this.wavesurfer);
     this.playBar.create();
 
-    // Create the annotation stages that appear below the wavesurfer. The stages contain tags 
+    // Create the annotation stages that appear below the wavesurfer. The stages contain tags
     // the users use to label a region in the audio clip
     this.stages = new AnnotationStages(this.wavesurfer, this.hiddenImage);
     this.stages.create();
@@ -73,6 +73,10 @@ function Annotator() {
     this.workflowBtns.create();
 
     this.addEvents();
+}
+
+function getQueryStringValue (key) {
+  return decodeURIComponent(window.location.search.replace(new RegExp("^(?:.*[&\\?]" + encodeURIComponent(key).replace(/[\.\+\*]/g, "\\$&") + "(?:\\=([^&]*))?)?.*$", "i"), "$1"));
 }
 
 Annotator.prototype = {
@@ -85,12 +89,12 @@ Annotator.prototype = {
             my.wavesurfer.seekTo(progress);
         };
 
-        // Update vertical progress bar to the currentTime when the sound clip is 
+        // Update vertical progress bar to the currentTime when the sound clip is
         // finished or paused since it is only updated on audioprocess
         this.wavesurfer.on('pause', updateProgressBar);
-        this.wavesurfer.on('finish', updateProgressBar);    
+        this.wavesurfer.on('finish', updateProgressBar);
 
-        // When a new sound file is loaded into the wavesurfer update the  play bar, update the 
+        // When a new sound file is loaded into the wavesurfer update the  play bar, update the
         // annotation stages back to stage 1, update when the user started the task, update the workflow buttons.
         // Also if the user is suppose to get hidden image feedback, append that component to the page
         this.wavesurfer.on('ready', function () {
@@ -159,7 +163,7 @@ Annotator.prototype = {
                         var instr = $('<h6>', {
                             "class": "instruction",
                             html: instruction
-                        });                    
+                        });
                     }
                     instructionsContainer.append(instr);
                 });
@@ -176,7 +180,7 @@ Annotator.prototype = {
 
             // Update the visualization type and the feedback type and load in the new audio clip
             my.wavesurfer.params.visualization = my.currentTask.visualization; // invisible, spectrogram, waveform
-            my.wavesurfer.params.feedback = my.currentTask.feedback; // hiddenImage, silent, notify, none 
+            my.wavesurfer.params.feedback = my.currentTask.feedback; // hiddenImage, silent, notify, none
             my.wavesurfer.load(my.currentTask.url);
         };
 
@@ -198,12 +202,77 @@ Annotator.prototype = {
 
     // Update the interface with the next task's data
     loadNextTask: function() {
-        var my = this;
-        $.getJSON(dataUrl)
-        .done(function(data) {
-            my.currentTask = data.task;
-            my.update();
-        });
+
+      var my = this;
+
+      $.getJSON(dataUrl).done(function(data) {
+        // console.log(this.currentTask.n);
+        my.currentTask = data.task;
+
+        // randomly select audio file from list
+        var n = Math.floor(Math.random() * 320);
+        data.task.url = data.task.url[n];
+        data.task.n = n;
+
+        // extract filename from path
+        data.task.filename = data.task.url.substring(12, 19);
+
+
+        // access query string with username
+        var uid = getQueryStringValue('uid');
+
+        // load server-side file with info on annotations done by current user
+        fetch('static/annotators/' + uid + '.txt').then(function(response){
+          response.text().then(function(text){
+
+            // search log for currently selected filename
+            var srch = text.search(data.task.filename);
+            // console.log(text.length);
+
+            // if user has annotated all files
+            if (text.length > 2559){
+              // redirect to completion page
+              window.location.replace("done.html");
+            }
+
+            // if this particular file has been annotated by this user already
+            if (srch != -1){
+              // re-run function to load a different file
+              my.loadNextTask();
+            }
+          })
+        })
+
+        // access annotation log using chosen filename
+        fetch('/static/json/file_annotation_n.json').then(function(response){
+          response.text().then(function(text){
+            var json_dat = JSON.parse(text);
+
+            var n_done = 0;
+
+            for (var key in json_dat){
+              if (json_dat.hasOwnProperty(key)) {
+                if (json_dat[key] == "IIIII") {
+                  n_done += 1;
+                }
+              }
+            }
+
+            if (n_done >= 320){ // if all files have been annotated five times already
+              window.location.replace("done.html");
+            }
+
+            if (json_dat[data.task.filename] == "IIIII"){
+              // re-run function to load a different file
+              my.loadNextTask();
+            }
+          })
+        })
+
+
+
+        my.update();
+      });
     },
 
     // Collect data about users annotations and submit it to the backend
@@ -217,17 +286,18 @@ Annotator.prototype = {
             this.sendingResponse = true;
             // Get data about the annotations the user has created
             var content = {
-                task_start_time: this.taskStartTime,
-                task_end_time: new Date().getTime(),
-                visualization: this.wavesurfer.params.visualization,
+                // task_start_time: this.taskStartTime,
+                // task_end_time: new Date().getTime(),
+                // visualization: this.wavesurfer.params.visualization,
                 annotations: this.stages.getAnnotations(),
-                deleted_annotations: this.stages.getDeletedAnnotations(),
+                // deleted_annotations: this.stages.getDeletedAnnotations(),
+                filename: this.currentTask.filename,
                 // List of the different types of actions they took to create the annotations
-                annotation_events: this.stages.getEvents(),
+                // annotation_events: this.stages.getEvents(),
                 // List of actions the user took to play and pause the audio
-                play_events: this.playBar.getEvents(),
+                // play_events: this.playBar.getEvents(),
                 // Boolean, if at the end, the user was shown what city the clip was recorded in
-                final_solution_shown: this.stages.aboveThreshold()
+                // final_solution_shown: this.stages.aboveThreshold()
             };
 
             if (this.stages.aboveThreshold()) {
@@ -249,15 +319,15 @@ Annotator.prototype = {
         var my = this;
         $.ajax({
             type: 'POST',
-            url: $.getJSON(postUrl),
+            // url: $.getJSON(`${postUrl}`), // !!!MODDED KB  FROM simply the var not string
             contentType: 'application/json',
             data: JSON.stringify(content)
         })
         .done(function(data) {
-            // If the last task had a hiddenImage component, remove it
-            if (my.currentTask.feedback === 'hiddenImage') {
-                my.hiddenImage.remove();
-            }
+            // // If the last task had a hiddenImage component, remove it
+            // if (my.currentTask.feedback === 'hiddenImage') {
+            //     my.hiddenImage.remove();
+            // }
             my.loadNextTask();
         })
         .fail(function() {
@@ -274,6 +344,7 @@ Annotator.prototype = {
 function main() {
     // Create all the components
     var annotator = new Annotator();
+    // var fs = require('fs');
     // Load the first audio annotation task
     annotator.loadNextTask();
 }

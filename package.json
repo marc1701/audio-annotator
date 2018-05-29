@@ -1,0 +1,16 @@
+{
+  "name": "MarcServer",
+  "version": "1.0.0",
+  "description": "MarcServer",
+  "main": "marcserver.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node marcserver.js"
+  },
+  "author": "KB/MCG",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "express": "^4.14.0"
+  }
+}
